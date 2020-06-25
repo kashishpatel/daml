@@ -36,10 +36,10 @@ sealed abstract class SExpr extends Product with Serializable {
 object SExpr {
 
   sealed abstract class SExprAtomic extends SExpr {
-    def evaluate(machine: Machine): SValue
+    def lookupValue(machine: Machine): SValue
 
     def execute(machine: Machine): Unit = {
-      machine.returnValue = evaluate(machine)
+      machine.returnValue = lookupValue(machine)
     }
 
   }
@@ -86,7 +86,7 @@ object SExpr {
 
   /** Reference to a builtin function */
   final case class SEBuiltin(b: SBuiltinMaybeHungry) extends SExprAtomic {
-    def evaluate(machine: Machine): SValue = {
+    def lookupValue(machine: Machine): SValue = {
       /* special case for nullary record constructors */
       b match {
         case SBRecCon(id, fields) if b.arity == 0 =>
@@ -99,7 +99,7 @@ object SExpr {
 
   /** A pre-computed value, usually primitive literal, e.g. integer, text, boolean etc. */
   final case class SEValue(v: SValue) extends SExprAtomic {
-    def evaluate(machine: Machine): SValue = {
+    def lookupValue(machine: Machine): SValue = {
       v
     }
   }
@@ -126,7 +126,7 @@ object SExpr {
       extends SExpr
       with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      val vfun = fun.evaluate(machine)
+      val vfun = fun.lookupValue(machine)
       //TODO: evaluate args to SValue here
       enterApplication(machine, vfun, args)
     }
@@ -144,7 +144,7 @@ object SExpr {
       val actuals = new util.ArrayList[SValue](arity)
       for (i <- 0 to arity - 1) {
         val arg = args(i)
-        val v = arg.evaluate(machine)
+        val v = arg.lookupValue(machine)
         actuals.add(v)
       }
       builtin.execute(actuals, machine)
@@ -206,7 +206,7 @@ object SExpr {
     */
   sealed abstract class SELoc extends SExprAtomic {
     def lookup(machine: Machine): SValue
-    def evaluate(machine: Machine): SValue = {
+    def lookupValue(machine: Machine): SValue = {
       lookup(machine)
     }
   }
@@ -244,7 +244,7 @@ object SExpr {
       extends SExpr
       with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
-      val vscrut = scrut.evaluate(machine)
+      val vscrut = scrut.lookupValue(machine)
       executeMatchAlts(machine, alts, vscrut)
     }
   }
@@ -266,7 +266,7 @@ object SExpr {
       val actuals = new util.ArrayList[SValue](arity)
       for (i <- 0 to arity - 1) {
         val arg = args(i)
-        val v = arg.evaluate(machine)
+        val v = arg.lookupValue(machine)
         actuals.add(v)
       }
       // TODO: define/call builtin.evaluate() to get the SValue directly
@@ -459,7 +459,7 @@ object SExpr {
     private def closure: SValue =
       SPAP(PClosure(Profile.LabelUnset, body, frame), new util.ArrayList[SValue](), arity)
 
-    def evaluate(machine: Machine): SValue = closure
+    def lookupValue(machine: Machine): SValue = closure
 
   }
 

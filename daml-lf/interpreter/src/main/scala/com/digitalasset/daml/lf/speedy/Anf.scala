@@ -19,7 +19,7 @@ object Anf {
     flattenExp(depth, env, exp)
   }
 
-  case class CompilationError(error: String) extends RuntimeException(error, null, true, false)
+  case class CompilationError(error: String) extends RuntimeException(error)
 
   case class DepthE(n: Int)
   case class DepthA(n: Int)
@@ -37,9 +37,9 @@ object Anf {
     }
   }
 
-  sealed trait Trampoline[T] {
+  sealed abstract class Trampoline[T] {
     @tailrec
-    def bounce: T = this match {
+    final def bounce: T = this match {
       case Land(x) => x
       case Bounce(continue) => continue().bounce
     }

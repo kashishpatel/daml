@@ -751,7 +751,7 @@ object Speedy {
         // Evaluate the arguments
         for (i <- 0 to newArgsLimit - 1) {
           val newArg = newArgs(i)
-          val v = newArg.evaluate(machine)
+          val v = newArg.lookupValue(machine)
           actuals.add(v)
         }
 
