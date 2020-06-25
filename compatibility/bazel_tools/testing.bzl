@@ -78,7 +78,7 @@ excluded_test_tool_tests = [
             {
                 "start": "0.0.0", # fixme on next release
                 "exclusions": [
-                    "CommandService",
+                    "CommandServiceIT",
                 ],
             },
         ],
