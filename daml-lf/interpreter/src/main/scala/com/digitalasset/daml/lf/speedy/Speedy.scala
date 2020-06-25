@@ -214,7 +214,7 @@ object Speedy {
         // NOTE(MH): If the top of the continuation stack is the monadic token,
         // we push location information under it to account for the implicit
         // lambda binding the token.
-        case Some(KArg(Array(SEValue.Token), _, _, _)) => {
+        case Some(KPushTo(_, SEAppAtomicGeneral(SELocS(1), Array(SEValue.Token)), _, _, _)) => {
           // Can't call pushKont here, because we don't push at the top of the stack.
           kontStack.add(last_index, KLocation(loc))
           if (enableInstrumentation) {
