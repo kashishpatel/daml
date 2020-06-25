@@ -10,6 +10,7 @@ import com.daml.lf.archive.{Decode, UniversalArchiveReader}
 import com.daml.lf.data.Ref.{Identifier, Party, QualifiedName}
 import com.daml.lf.data.Time
 import com.daml.lf.language.Ast.EVal
+import com.daml.lf.speedy.AExpr
 import com.daml.lf.speedy.SResult._
 import com.daml.lf.transaction.Transaction.Value
 import com.daml.lf.value.Value.{ContractId, ContractInst}
@@ -36,7 +37,7 @@ class CollectAuthorityState {
   private var scenario: String = _
 
   var machine: Machine = null
-  var the_sexpr: SExpr = null
+  var the_anf: AExpr = null
 
   @Setup(Level.Trial)
   def init(): Unit = {
@@ -53,7 +54,9 @@ class CollectAuthorityState {
     val expr = EVal(Identifier(packages.main._1, QualifiedName.assertFromString(scenario)))
 
     machine = Machine.fromScenarioExpr(compiledPackages, seeding(), expr)
-    the_sexpr = machine.ctrl
+
+    // This is the expression which we insert into the machine each time we run()
+    the_anf = AExpr(machine.ctrl)
 
     // fill the caches!
     setup()
@@ -67,7 +70,7 @@ class CollectAuthorityState {
 
   // This is function that we benchmark
   def run(): Unit = {
-    machine.setExpressionToEvaluate(the_sexpr)
+    machine.setExpressionToEvaluate(the_anf)
     var step = 0
     var finalValue: SValue = null
     while (finalValue == null) {

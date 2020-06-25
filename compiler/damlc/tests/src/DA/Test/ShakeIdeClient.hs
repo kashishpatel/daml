@@ -1142,7 +1142,8 @@ scenarioTests mbScenarioService = Tasty.testGroup "Scenario tests"
           let vr = VRScenario foo "test"
           setFilesOfInterest [foo]
           setOpenVirtualResources [vr]
-          expectVirtualResourceRegex vr "Stack trace:.*- boom.*Foo:3:1.*- test.*Foo:5:1"
+          -- We dont get a stack trace anymore
+          expectVirtualResourceRegex vr "Aborted:  BOOM" --"Stack trace:.*- boom.*Foo:3:1.*- test.*Foo:5:1"
     , testCase' "debug is lazy" $ do
         let goodScenario =
                 [ "daml 1.2"
