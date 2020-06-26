@@ -4,7 +4,27 @@
 package com.daml.lf.speedy
 
 /**
-  * Transformation to ANF based AST for the speedy interpreter.
+  Transformation to ANF based AST for the speedy interpreter.
+
+  "ANF" stands for A-normal form.
+  In essence it means that sub-expressions of most expression nodes are in atomic-form.
+  The one exception is the let-expression.
+
+  Atomic mean: a variable reference (ELoc), a (literal) value, or a builtin.
+  This is captured by any speedy-expression which `extends SExprAtomic`.
+
+  TODO: <EXAMPLE HERE>
+
+  We reason we convert to ANF is to improve the efficiency of speedy execution: the
+  execution engine can take advantage of the atomic assumption, and often removes
+  additional execution steps - in particular the pushing of continuations to allow
+  execution to continue after a compound expression is reduced to a value.
+
+  The speedy machine now expects that it will never have to execute a non-ANF expression,
+  crashing at runtime if one is encountered.  In particular we must ensure that the
+  expression forms: SEAppGeneral and SECase are removed, and replaced by the simpler
+  SEAppAtomic and SECaseAtomic (plus SELet as required).
+
   */
 import com.daml.lf.speedy.SExpr._
 
@@ -19,11 +39,30 @@ object Anf {
     flattenExp(depth, env, exp)
   }
 
+  /**
+    The transformation code is implemented using a continuation-passing style of
+    translation (which is quite common for translation to ANF). In general, naming nested
+    compound expressions requires turning an expression kind of inside out, lifting the
+    introduced let-expression up to the the nearest enclosing abstraction or case-branch.
+
+    For speedy, the ANF pass occurs after translation to De-Bruin and closure conversions,
+    which adds the additional complication of re-indexing the variable indexes. This is
+    achieved by tracking the old and new depth & the mapping between them. See the types:
+    DepthE, DepthA and Env.
+
+    There is also the issue of avoiding stack-overflow during compilation, which is
+    managed by the using of a Trampoline[T] type.
+    */
   case class CompilationError(error: String) extends RuntimeException(error)
 
+  /** `DepthE` tracks the stack-depth of the original expression being traversed */
   case class DepthE(n: Int)
+
+  /** `DepthA` tracks the stack-depth of the ANF expression being constructed */
   case class DepthA(n: Int)
 
+  /** `Env` contains the mapping from old to new depth, as well as the old-depth as these
+    * components always travel together */
   case class Env(absMap: Map[DepthE, DepthA], oldDepth: DepthE)
 
   val initEnv = Env(absMap = Map.empty, oldDepth = DepthE(0))
@@ -37,6 +76,7 @@ object Anf {
     }
   }
 
+  // TODO: reference something here about trampolines
   sealed abstract class Trampoline[T] {
     @tailrec
     final def bounce: T = this match {
@@ -48,9 +88,23 @@ object Anf {
   final case class Land[T](x: T) extends Trampoline[T]
   final case class Bounce[T](continue: () => Trampoline[T]) extends Trampoline[T]
 
+  /** `Res` is the final, fully transformed ANF expression, returned by the continuations. */
   type Res = Trampoline[AExpr]
+
+  /** `K[T]` is the continuation type which must be passed to the core transformation
+    functions, i,e, `transformExp`.
+
+    Notice how the DepthA is threaded through the continuation.
+    */
   type K[T] = ((DepthA, T) => Res)
 
+  /** During conversion we need to deal with bindings which are made/found at a given
+    absolute stack depth. These are represented using `AbsBinding`.
+
+    Note the contrast with the expression form `ELocS` which indicates a relative offset
+    from the top of the stack. This relative-position is used in both the original
+    expression which we traverse AND the new ANF expression we are constructing.
+    */
   case class AbsBinding(abs: DepthA)
 
   def makeAbsoluteB(env: Env, rel: Int): AbsBinding = {
@@ -82,7 +136,6 @@ object Anf {
     makeRelativeA(depth)(makeAbsoluteA(env, atom))
   }
 
-  // TODO: ? inline AbsLoc, makeAbsolute/Relative(L) -- all we need in relocateL
   type AbsLoc = Either[SELoc, AbsBinding]
 
   def makeAbsoluteL(env: Env, loc: SELoc): AbsLoc = loc match {
@@ -101,16 +154,12 @@ object Anf {
     makeRelativeL(depth)(makeAbsoluteL(env, loc))
   }
 
-  // flatten* -- non-continuation entry points
-
   def flattenExp(depth: DepthA, env: Env, exp: SExpr): AExpr = {
     val k0: K[SExpr] = {
       case (depth @ _, expr) => Land(AExpr(expr))
     }
     transformExp(depth, env, exp, k0).bounce
   }
-
-  // transform* -- continuation entry points
 
   def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
     val rhs1 = flattenExp(depth, env, rhs).wrapped
@@ -131,7 +180,6 @@ object Anf {
     })
   }*/
 
-  //TODO: inline
   def flattenAlts(depth: DepthA, env: Env, alts: Array[SCaseAlt]): Array[SCaseAlt] = {
     alts.map {
       case SCaseAlt(pat, body0) =>
@@ -148,6 +196,13 @@ object Anf {
     case SCPCons => 2
   }
 
+  /** `transformExp` is the function at the heart of the ANF transformation.  You can read
+    it's type as saying: "Caller, give me a general expression `exp`, (& depth/env info),
+    and a continuation function `k` which says what you want to do with the transformed
+    expression. Then I will do the transform, and call `k` with it. I reserve the right to
+    wrap further expression-AST around the expression returned by `k`.
+    See: `atomizeExp` for a instance where this wrapping occurs.
+    */
   def transformExp(depth: DepthA, env: Env, exp: SExpr, k: K[SExpr]): Res =
     Bounce(() =>
       exp match {
@@ -155,6 +210,8 @@ object Anf {
         case x: SEVal => k(depth, x)
         case x: SEImportValue => k(depth, x)
 
+        // (NC) I'm not entirely happy with how the following code is formatted, but
+        // scalafmt wont have it any other way.
         case SEAppGeneral(func, args) =>
           atomizeExp(
             depth,
@@ -202,7 +259,6 @@ object Anf {
         case SELocation(loc, body) =>
           transformExp(depth, env, body, {
             case (depth, body) =>
-              //val body1 = makeRelativeA(depth)(body)
               k(depth, SELocation(loc, body))
           })
 
@@ -214,12 +270,10 @@ object Anf {
 
         case x: SEAbs => throw CompilationError(s"flatten: unexpected: $x")
         case x: SEWronglyTypeContractId => throw CompilationError(s"flatten: unexpected: $x")
-        //case x: SEImportValue => throw CompilationError(s"flatten: unexpected: $x")
         case x: SEVar => throw CompilationError(s"flatten: unexpected: $x")
 
         case x: SEAppAtomicGeneral => throw CompilationError(s"flatten: unexpected: $x")
         case x: SEAppAtomicSaturatedBuiltin => throw CompilationError(s"flatten: unexpected: $x")
-        //case x: SELet1General => throw CompilationError(s"flatten: unexpected: $x")
         case x: SELet1Builtin => throw CompilationError(s"flatten: unexpected: $x")
         case x: SECaseAtomic => throw CompilationError(s"flatten: unexpected: $x")
 
@@ -243,12 +297,18 @@ object Anf {
     exp match {
       case ea: SExprAtomic => k(depth, makeAbsoluteA(env, ea))
       case _ =>
-        transformExp(depth, env, exp, {
-          case (depth, anf) =>
-            val atom = Right(AbsBinding(depth))
-            val body = k(DepthA(depth.n + 1), atom).bounce.wrapped
-            Land(AExpr(SELet1(anf, body)))
-        })
+        transformExp(
+          depth,
+          env,
+          exp, {
+            case (depth, anf) =>
+              val atom = Right(AbsBinding(depth))
+              // Here we call `k' with a newly introduced variable:
+              val body = k(DepthA(depth.n + 1), atom).bounce.wrapped
+              // Here we wrap the result of `k` with an enclosing let expression:
+              Land(AExpr(SELet1(anf, body)))
+          }
+        )
     }
   }
 
