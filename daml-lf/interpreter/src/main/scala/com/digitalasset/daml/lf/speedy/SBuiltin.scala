@@ -24,6 +24,17 @@ import com.daml.lf.transaction.Node.{GlobalKey, KeyWithMaintainers}
 import scala.collection.JavaConverters._
 import scala.collection.immutable.TreeSet
 
+/**
+  Speedy builtins are stratified into two layers:
+  Parent: `SBuiltinMaybeHungry`, child: `SBuiltin` (which are never hungry).
+  Hungry means, may throw SpeedyHungry.
+
+  Non-hungry builtins can be treated specially because their evaluation is immediate.
+  This fact is used by the execution of the ANF expression form: `SELet1Builtin`.
+
+  The vast majority of the builtins are nevery hungry, and so they extend `SBuiltin`
+  There are 7 hungry builtins which extend `SBuiltinMaybeHungry`
+  */
 /** Speedy builtin functions */
 sealed abstract class SBuiltinMaybeHungry(val arity: Int) {
   // Helper for constructing expressions applying this builtin.
@@ -37,7 +48,9 @@ sealed abstract class SBuiltinMaybeHungry(val arity: Int) {
 }
 
 sealed abstract class SBuiltin(val arity1: Int) extends SBuiltinMaybeHungry(arity1) {
-  //TODO: evaluate here
+  // TODO: define evaluate, and convert all subclasses to this simpler form
+  // def evaluate(args: util.ArrayList[SValue]): SValue
+  // Then execute can be defined in terms of evaluate. Like how it is done in `SExprAtomic`.
 }
 
 object SBuiltin {

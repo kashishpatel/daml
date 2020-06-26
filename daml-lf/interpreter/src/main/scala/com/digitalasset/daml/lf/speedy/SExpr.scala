@@ -111,11 +111,16 @@ object SExpr {
     def execute(machine: Machine): Unit = {
       //machine.pushKont(KArg(args, machine.frame, machine.actuals, machine.env.size))
       //machine.ctrl = fun
+      // We never encounter a general application node when executing on the speedy machine
+      // This is because all speedy expression must have been converted to ANF form
+      // The wrapper type `AExpr` helps ensure this restrction is adhered to.
+      // Better still would be to properly separate the `SExpr` and `AExpr` types.
       throw SErrorCrash(s"execute: unexpected SEAppGeneral")
     }
   }
 
   object SEApp {
+    //TODO: SEApp is no longer a smart constructor; remove this indirection.
     def apply(fun: SExpr, args: Array[SExpr]): SExpr = {
       SEAppGeneral(fun, args)
     }
@@ -235,6 +240,7 @@ object SExpr {
   /** Pattern match. */
   final case class SECase(scrut: SExpr, alts: Array[SCaseAlt]) extends SExpr with SomeArrayEquals {
     def execute(machine: Machine): Unit = {
+      // All SEcase are converted to SECaseAtomic in Anf.flattenToAnf
       throw SErrorCrash(s"execute: unexpected SEcase")
     }
     override def toString: String = s"SECase($scrut, ${alts.mkString("[", ",", "]")})"
@@ -476,6 +482,10 @@ object SExpr {
     val FoldL = SEBuiltinRecursiveDefinition(Reference.FoldL)
     val FoldR = SEBuiltinRecursiveDefinition(Reference.FoldR)
     val EqualList = SEBuiltinRecursiveDefinition(Reference.EqualList)
+
+    // The body of an expanded recursive-builtin will always be in ANF form.
+    // The comments showing where variables are to be found at runtime have been
+    // fully checked and updated during the move to ANF.
 
     private def foldLBody: SExpr =
       SECaseAtomic( // case xs of

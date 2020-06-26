@@ -151,7 +151,6 @@ object Speedy {
     @inline def kontDepth(): Int = kontStack.size()
 
     @inline def pushKont(k: Kont): Unit = {
-      //println(s"pushKont: ${ppKont(k)}")
       kontStack.add(k)
       if (enableInstrumentation) {
         track.countPushesKont += 1
@@ -214,6 +213,7 @@ object Speedy {
         // NOTE(MH): If the top of the continuation stack is the monadic token,
         // we push location information under it to account for the implicit
         // lambda binding the token.
+        // TODO: re-work the location handling, to avoid the following fragile special-case
         case Some(KPushTo(_, SEAppAtomicGeneral(SELocS(1), Array(SEValue.Token)), _, _, _)) => {
           // Can't call pushKont here, because we don't push at the top of the stack.
           kontStack.add(last_index, KLocation(loc))
@@ -270,6 +270,7 @@ object Speedy {
     /** Reuse an existing speedy machine to evaluate a new expression.
       Do not use if the machine is partway though an existing evaluation.
       i.e. run() has returned an `SResult` requiring a callback.
+      This function takes an `AExpr` to prove that the expression has been converted to ANF
       */
     def setExpressionToEvaluate(anf: AExpr): Unit = {
       ctrl = anf.wrapped
@@ -572,7 +573,6 @@ object Speedy {
       compiledPackages = compiledPackages,
       submissionTime = Time.Timestamp.MinValue,
       initialSeeding = InitialSeeding.TransactionSeed(transactionSeed),
-      //expr = SEApp(scenario, Array(SEValue.Token)),
       anf = makeApplyToToken(scenario),
       globalCids = Set.empty,
       committers = Set.empty,
@@ -581,7 +581,6 @@ object Speedy {
     )
 
     def makeApplyToToken(anf: AExpr): AExpr = {
-      //SEAppGeneral(anf, Array(SEValue.Token))
       AExpr(SELet1General(anf.wrapped, SEAppAtomicGeneral(SELocS(1), Array(SEValue.Token))))
     }
 
@@ -605,6 +604,7 @@ object Speedy {
         supportedTransactionVersions = supportedTransactionVersions,
       )
 
+    // Construct a machine for evaluating an expression that is neither an update nor a scenario expression.
     def fromPureSExpr(
         compiledPackages: CompiledPackages,
         expr: SExpr,
@@ -696,6 +696,7 @@ object Speedy {
     machine.ctrl = args(0)
   }
 
+  //TODO: ALMOST DEAD CODE. We can remove this code once KArg has been removed.
   /** The function has been evaluated to a value, now start evaluating the arguments. */
   def executeApplication(machine: Machine, vfun: SValue, newArgs: Array[SExpr]): Unit = {
     vfun match {
@@ -737,6 +738,7 @@ object Speedy {
   }
 
   /** The function has been evaluated to a value, now start evaluating the arguments. */
+  // This code replaces `executeApplication` which is almost dead.
   def enterApplication(machine: Machine, vfun: SValue, newArgs: Array[SExprAtomic]): Unit = {
     vfun match {
       case SPAP(prim, actualsSoFar, arity) =>
@@ -761,8 +763,9 @@ object Speedy {
 
         } else {
           // Too many arguments: Push a continuation to re-apply the over-applied args.
-          // TODO: use the evaluated 'actuals' in the over-app continuation
           if (othersLength > 0) {
+            // TODO: Stop using Karg. Instead save the already evaluated 'actuals' in a special
+            // and much simpler continuation to perform the application.
             val others = new Array[SExpr](othersLength)
             System.arraycopy(newArgs, missing, others, 0, othersLength)
             machine.pushKont(KArg(others, machine.frame, machine.actuals, machine.env.size))
@@ -799,6 +802,7 @@ object Speedy {
     }
   }
 
+  //TODO: Remove KArg once it's use to execute over-applications is removed
   final case class KArg(newArgs: Array[SExpr], frame: Frame, actuals: Actuals, envSize: Int)
       extends Kont
       with SomeArrayEquals {
