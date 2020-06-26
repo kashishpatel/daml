@@ -36,7 +36,7 @@ object Anf {
   def flattenToAnf(exp: SExpr): AExpr = {
     val depth = DepthA(0)
     val env = initEnv
-    flattenExp(depth, env, exp)
+    flattenExp(depth, env, exp, flattenedExpression => Land(flattenedExpression)).bounce
   }
 
   /**
@@ -154,19 +154,16 @@ object Anf {
     makeRelativeL(depth)(makeAbsoluteL(env, loc))
   }
 
-  def flattenExp(depth: DepthA, env: Env, exp: SExpr): AExpr = {
-    val k0: K[SExpr] = {
-      case (depth @ _, expr) => Land(AExpr(expr))
-    }
-    transformExp(depth, env, exp, k0).bounce
+  def flattenExp(depth: DepthA, env: Env, exp: SExpr, k: (AExpr => Trampoline[AExpr])): Res = {
+    Bounce(() => k(transformExp(depth, env, exp, { case (_, sexpr) => Land(AExpr(sexpr)) }).bounce))
   }
 
   def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
-    val rhs1 = flattenExp(depth, env, rhs).wrapped
-    val depth1 = DepthA(depth.n + 1)
-    val env1 = trackBindings(depth, env, 1)
-    val body1 = flattenExp(depth1, env1, body).wrapped
-    k(depth, SELet1(rhs1, body1))
+    flattenExp(depth, env, rhs, { rhs1 =>
+      val depth1 = DepthA(depth.n + 1)
+      val env1 = trackBindings(depth, env, 1)
+      flattenExp(depth1, env1, body, { body1 => k(depth, SELet1(rhs1.wrapped, body1.wrapped))})
+    })
   }
 
   /*def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
@@ -185,8 +182,9 @@ object Anf {
       case SCaseAlt(pat, body0) =>
         val n = patternNArgs(pat)
         val env1 = trackBindings(depth, env, n)
-        val body = flattenExp(DepthA(depth.n + n), env1, body0).wrapped
-        SCaseAlt(pat, body)
+        SCaseAlt(pat, flattenExp(DepthA(depth.n + n), env1, body0, body => {
+          Land(body)
+        }).bounce.wrapped)
     }
   }
 
@@ -251,10 +249,13 @@ object Anf {
           transformLet1(depth, env, rhs, body, k)
 
         case SECatch(body0, handler0, fin0) =>
-          val body = flattenExp(depth, env, body0).wrapped
-          val handler = flattenExp(depth, env, handler0).wrapped
-          val fin = flattenExp(depth, env, fin0).wrapped
-          k(depth, SECatch(body, handler, fin))
+          flattenExp(depth, env, body0, body => {
+            flattenExp(depth, env, handler0, handler => {
+              flattenExp(depth, env, fin0, fin => {
+                k(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped))
+              })
+            })
+          })
 
         case SELocation(loc, body) =>
           transformExp(depth, env, body, {
