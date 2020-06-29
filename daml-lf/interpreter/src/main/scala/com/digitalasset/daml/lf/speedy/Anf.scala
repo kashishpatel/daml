@@ -36,7 +36,7 @@ object Anf {
   def flattenToAnf(exp: SExpr): AExpr = {
     val depth = DepthA(0)
     val env = initEnv
-    flattenExp(depth, env, exp, flattenedExpression => flattenedExpression)
+    flattenExp(depth, env, exp, flattenedExpression => Land(flattenedExpression)).bounce
   }
 
   /**
