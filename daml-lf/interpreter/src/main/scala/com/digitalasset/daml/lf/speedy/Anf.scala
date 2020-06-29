@@ -152,14 +152,14 @@ object Anf {
   }
 
   def flattenExp[A](depth: DepthA, env: Env, exp: SExpr, k: (AExpr => A)): A = {
-    k(transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }))
+    k(transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }).bounce)
   }
 
-  def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): AExpr = {
+  def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Trampoline[AExpr] = {
     flattenExp(depth, env, rhs, { rhs1 =>
       val depth1 = DepthA(depth.n + 1)
       val env1 = trackBindings(depth, env, 1)
-      flattenExp(depth1, env1, body, { body1 => k(depth, SELet1(rhs1.wrapped, body1.wrapped))})
+      Bounce(() => flattenExp(depth1, env1, body, { body1 => Land(k(depth, SELet1(rhs1.wrapped, body1.wrapped)))}))
     })
   }
 
@@ -198,16 +198,16 @@ object Anf {
     wrap further expression-AST around the expression returned by `k`.
     See: `atomizeExp` for a instance where this wrapping occurs.
     */
-  def transformExp(depth: DepthA, env: Env, exp: SExpr, k: K[SExpr]): AExpr =
+  def transformExp(depth: DepthA, env: Env, exp: SExpr, k: K[SExpr]): Trampoline[AExpr] =
       exp match {
-        case atom: SExprAtomic => k(depth, relocateA(depth, env)(atom))
-        case x: SEVal => k(depth, x)
-        case x: SEImportValue => k(depth, x)
+        case atom: SExprAtomic => Land(k(depth, relocateA(depth, env)(atom)))
+        case x: SEVal => Land(k(depth, x))
+        case x: SEImportValue => Land(k(depth, x))
 
         // (NC) I'm not entirely happy with how the following code is formatted, but
         // scalafmt wont have it any other way.
         case SEAppGeneral(func, args) =>
-          atomizeExp(
+          Bounce(() => atomizeExp(
             depth,
             env,
             func, {
@@ -221,49 +221,49 @@ object Anf {
                       val args1 = args.map(makeRelativeA(depth))
                       k(depth, SEAppAtomic(func1, args1.toArray))
                   }
-                ))
+                ).bounce)
             }
-          )
+          ))
         case SEMakeClo(fvs0, arity, body0) =>
           val fvs = fvs0.map(relocateL(depth, env))
           val body = flattenToAnf(body0).wrapped
-          k(depth, SEMakeClo(fvs, arity, body))
+          Land(k(depth, SEMakeClo(fvs, arity, body)))
 
         case SECase(scrut, alts0) =>
-          atomizeExp(depth, env, scrut, {
+          Bounce(() => atomizeExp(depth, env, scrut, {
             case (depth, scrut, transk) =>
               val scrut1 = makeRelativeA(depth)(scrut)
               val alts = flattenAlts(depth, env, alts0)
               transk(k(depth, SECaseAtomic(scrut1, alts)))
-          })
+          }))
 
         case SELet(rhss, body) =>
           val expanded = expandMultiLet(rhss.toList, body)
-          transformExp(depth, env, expanded, k)
+          Bounce(() => transformExp(depth, env, expanded, k))
 
         case SELet1General(rhs, body) =>
-          transformLet1(depth, env, rhs, body, k)
+          Bounce(() => transformLet1(depth, env, rhs, body, k))
 
         case SECatch(body0, handler0, fin0) =>
-          flattenExp(depth, env, body0, body => {
+          Bounce(() => flattenExp(depth, env, body0, body => {
             flattenExp(depth, env, handler0, handler => {
               flattenExp(depth, env, fin0, fin => {
-                k(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped))
+                Land(k(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped)))
               })
             })
-          })
+          }))
 
         case SELocation(loc, body) =>
-          transformExp(depth, env, body, {
+          Bounce(() => transformExp(depth, env, body, {
             case (depth, body) =>
               k(depth, SELocation(loc, body))
-          })
+          }))
 
         case SELabelClosure(label, exp) =>
-          transformExp(depth, env, exp, {
+          Bounce(() => transformExp(depth, env, exp, {
             case (depth, exp) =>
               k(depth, SELabelClosure(label, exp))
-          })
+          }))
 
         case x: SEAbs => throw CompilationError(s"flatten: unexpected: $x")
         case x: SEWronglyTypeContractId => throw CompilationError(s"flatten: unexpected: $x")
@@ -276,24 +276,24 @@ object Anf {
 
     }
 
-  def atomizeExps(depth: DepthA, env: Env, exps: List[SExpr], k: K[List[AbsAtom]]): AExpr =
+  def atomizeExps(depth: DepthA, env: Env, exps: List[SExpr], k: K[List[AbsAtom]]): Trampoline[AExpr] =
     exps match {
-      case Nil => k(depth, Nil)
+      case Nil => Land(k(depth, Nil))
       case exp :: exps =>
-          atomizeExp(depth, env, exp, {
+          Bounce(() => atomizeExp(depth, env, exp, {
             case (depth, atom, transk) =>
               transk(atomizeExps(depth, env, exps, {
                 case (depth, atoms) =>
                   k(depth, atom :: atoms)
-              }))
-          })
+              }).bounce)
+          }))
     }
 
-  def atomizeExp(depth: DepthA, env: Env, exp: SExpr, transform: (DepthA, AbsAtom, AExpr => AExpr) => AExpr): AExpr = {
+  def atomizeExp(depth: DepthA, env: Env, exp: SExpr, transform: (DepthA, AbsAtom, AExpr => AExpr) => AExpr): Trampoline[AExpr] = {
     exp match {
-      case ea: SExprAtomic => transform(depth, makeAbsoluteA(env, ea), ae => ae)
+      case ea: SExprAtomic => Land(transform(depth, makeAbsoluteA(env, ea), ae => ae))
       case _ =>
-        transformExp(
+        Bounce(() => transformExp(
           depth,
           env,
           exp, {
@@ -302,7 +302,7 @@ object Anf {
               // wrap the transformed body with an enclosing let expression using a newly introduced variable
               transform(DepthA(depth.n + 1), atom, body => AExpr(SELet1(anf, body.wrapped)))
           }
-        )
+        ))
     }
   }
 
