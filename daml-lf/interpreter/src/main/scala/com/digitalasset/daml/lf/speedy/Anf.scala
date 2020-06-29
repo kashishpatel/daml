@@ -88,15 +88,12 @@ object Anf {
   final case class Land[T](x: T) extends Trampoline[T]
   final case class Bounce[T](continue: () => Trampoline[T]) extends Trampoline[T]
 
-  /** `Res` is the final, fully transformed ANF expression, returned by the continuations. */
-  type Res = AExpr
-
   /** `K[T]` is the continuation type which must be passed to the core transformation
     functions, i,e, `transformExp`.
 
     Notice how the DepthA is threaded through the continuation.
     */
-  type K[T] = ((DepthA, T) => Res)
+  type K[T] = ((DepthA, T) => AExpr)
 
   /** During conversion we need to deal with bindings which are made/found at a given
     absolute stack depth. These are represented using `AbsBinding`.
@@ -154,11 +151,11 @@ object Anf {
     makeRelativeL(depth)(makeAbsoluteL(env, loc))
   }
 
-  def flattenExp(depth: DepthA, env: Env, exp: SExpr, k: (AExpr => AExpr)): Res = {
+  def flattenExp(depth: DepthA, env: Env, exp: SExpr, k: (AExpr => AExpr)): AExpr = {
     k(transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }))
   }
 
-  def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
+  def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): AExpr = {
     flattenExp(depth, env, rhs, { rhs1 =>
       val depth1 = DepthA(depth.n + 1)
       val env1 = trackBindings(depth, env, 1)
@@ -201,7 +198,7 @@ object Anf {
     wrap further expression-AST around the expression returned by `k`.
     See: `atomizeExp` for a instance where this wrapping occurs.
     */
-  def transformExp(depth: DepthA, env: Env, exp: SExpr, k: K[SExpr]): Res =
+  def transformExp(depth: DepthA, env: Env, exp: SExpr, k: K[SExpr]): AExpr =
       exp match {
         case atom: SExprAtomic => k(depth, relocateA(depth, env)(atom))
         case x: SEVal => k(depth, x)
@@ -279,7 +276,7 @@ object Anf {
 
     }
 
-  def atomizeExps(depth: DepthA, env: Env, exps: List[SExpr], k: K[List[AbsAtom]]): Res =
+  def atomizeExps(depth: DepthA, env: Env, exps: List[SExpr], k: K[List[AbsAtom]]): AExpr =
     exps match {
       case Nil => k(depth, Nil)
       case exp :: exps =>
@@ -292,7 +289,7 @@ object Anf {
           })
     }
 
-  def atomizeExp(depth: DepthA, env: Env, exp: SExpr, transform: (DepthA, AbsAtom, AExpr => AExpr) => AExpr): Res = {
+  def atomizeExp(depth: DepthA, env: Env, exp: SExpr, transform: (DepthA, AbsAtom, AExpr => AExpr) => AExpr): AExpr = {
     exp match {
       case ea: SExprAtomic => transform(depth, makeAbsoluteA(env, ea), ae => ae)
       case _ =>
