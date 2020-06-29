@@ -151,7 +151,7 @@ object Anf {
     makeRelativeL(depth)(makeAbsoluteL(env, loc))
   }
 
-  def flattenExp(depth: DepthA, env: Env, exp: SExpr, k: (AExpr => AExpr)): AExpr = {
+  def flattenExp[A](depth: DepthA, env: Env, exp: SExpr, k: (AExpr => A)): A = {
     k(transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }))
   }
 
@@ -179,9 +179,9 @@ object Anf {
       case SCaseAlt(pat, body0) =>
         val n = patternNArgs(pat)
         val env1 = trackBindings(depth, env, n)
-        SCaseAlt(pat, flattenExp(DepthA(depth.n + n), env1, body0, body => {
-          body
-        }).wrapped)
+        flattenExp(DepthA(depth.n + n), env1, body0, body => {
+          SCaseAlt(pat, body.wrapped)
+        })
     }
   }
 
