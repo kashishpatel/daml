@@ -147,12 +147,8 @@ object Anf {
     case Right(binding) => SELocS(makeRelativeB(depth, binding))
   }
 
-  private def flattenExp[A](
-      depth: DepthA,
-      env: Env,
-      exp: SExpr,
-      k: (AExpr => A)): A = {
-    k(transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }, a => a))
+  private def flattenExp[A](depth: DepthA, env: Env, exp: SExpr, k: (AExpr => A)): A = {
+    transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }, k)
   }
 
   private def transformLet1[A](depth: DepthA, env: Env, rhs: SExpr, body: SExpr, transform: Tx[SExpr], k: AExpr => A): A = {
