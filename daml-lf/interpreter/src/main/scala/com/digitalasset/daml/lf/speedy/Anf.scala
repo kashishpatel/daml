@@ -159,14 +159,13 @@ object Anf {
   }
 
   private def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
-    flattenExp(depth, env, rhs, { rhs1 =>
-        val depth1 = depth.incr(1)
-        val env1 = trackBindings(depth, env, 1)
-        flattenExp(depth1, env1, body, { body1 =>
-          k(depth, SELet1(rhs1.wrapped, body1.wrapped))
-        })
-      }
-    )
+    transformExp(depth, env, rhs, { case (depth, rhs) =>
+      val depth1 = depth.incr(1)
+      val env1 = trackBindings(depth, env, 1)
+      val body1 = transformExp(depth1, env1, body, k)
+      AExpr(SELet1(rhs, body1.wrapped)
+      )
+    })
   }
 
   private def flattenAlts(depth: DepthA, env: Env, alts: Array[SCaseAlt]): Array[SCaseAlt] = {
