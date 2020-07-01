@@ -38,7 +38,7 @@ object Anf {
   def flattenToAnf(exp: SExpr): AExpr = {
     val depth = DepthA(0)
     val env = initEnv
-    flattenExp(depth, env, exp, flattenedExpression => flattenedExpression)
+    flattenExp(depth, env, exp, flattenedExpression => Land(flattenedExpression)).bounce
   }
 
   /**
@@ -93,7 +93,7 @@ object Anf {
 
     Notice how the DepthA is threaded through the continuation.
     */
-  type Tx[T, A] = ((DepthA, T, AExpr => A) => A)
+  type Tx[T, A] = ((DepthA, T, AExpr => Trampoline[A]) => Trampoline[A])
 
   /** During conversion we need to deal with bindings which are made/found at a given
     absolute stack depth. These are represented using `AbsBinding`. An absolute stack
@@ -148,33 +148,33 @@ object Anf {
   }
 
 
-  private def flattenExp[A](depth: DepthA, env: Env, exp: SExpr, k: (AExpr => A)): A = {
-    def helpingTheTypeSystem(d: DepthA, sexpr: SExpr, txK: AExpr => A): A = {
+  private def flattenExp[A](depth: DepthA, env: Env, exp: SExpr, k: (AExpr => Trampoline[A])): Trampoline[A] = {
+    def helpingTheTypeSystem(d: DepthA, sexpr: SExpr, txK: AExpr => Trampoline[A]): Trampoline[A] = {
       def unused[A](t: A): Unit = t match { case _ => () }
       unused(d)
-      txK(AExpr(sexpr))
+      Bounce(() => txK(AExpr(sexpr)))
     }
-    transformExp[A](depth, env, exp, helpingTheTypeSystem, k)
+    Bounce(() => transformExp[A](depth, env, exp, helpingTheTypeSystem, k))
   }
 
-  private def transformLet1[A](depth: DepthA, env: Env, rhs: SExpr, body: SExpr, transform: Tx[SExpr, A], k: AExpr => A): A = {
-    def helpingTheTypeSystem(depth: DepthA, rhs: SExpr, txK: AExpr => A): A = {
+  private def transformLet1[A](depth: DepthA, env: Env, rhs: SExpr, body: SExpr, transform: Tx[SExpr, A], k: AExpr => Trampoline[A]): Trampoline[A] = {
+    def helpingTheTypeSystem(depth: DepthA, rhs: SExpr, txK: AExpr => Trampoline[A]): Trampoline[A] = {
       val depth1 = depth.incr(1)
       val env1 = trackBindings(depth, env, 1)
-      transformExp(depth1, env1, body, transform, body1 => txK(AExpr(SELet1(rhs, body1.wrapped))))
+      Bounce(() => transformExp(depth1, env1, body, transform, body1 => Bounce(() => txK(AExpr(SELet1(rhs, body1.wrapped))))))
     }
-    transformExp(depth, env, rhs, helpingTheTypeSystem, k)
+    Bounce(() => transformExp(depth, env, rhs, helpingTheTypeSystem, k))
   }
 
-  private def flattenAlts[A](depth: DepthA, env: Env, alts: Array[SCaseAlt], k: Array[SCaseAlt] => A): A = {
-    k(alts.map {
+  private def flattenAlts[A](depth: DepthA, env: Env, alts: Array[SCaseAlt], k: Array[SCaseAlt] => Trampoline[A]): Trampoline[A] = {
+    Bounce(() => k(alts.map {
       case SCaseAlt(pat, body0) =>
         val n = patternNArgs(pat)
         val env1 = trackBindings(depth, env, n)
         flattenExp(depth.incr(n), env1, body0, body => {
-          SCaseAlt(pat, body.wrapped)
-        })
-    })
+          Land(SCaseAlt(pat, body.wrapped))
+        }).bounce
+    }))
   }
 
   private def patternNArgs(pat: SCasePat): Int = pat match {
@@ -190,62 +190,62 @@ object Anf {
     *wrap further expression-AST around the expression returned by `k`.
     *See: `atomizeExp` for a instance where this wrapping occurs.
    */
-  private def transformExp[A](depth: DepthA, env: Env, exp: SExpr, transform: Tx[SExpr, A], k: AExpr => A): A =
+  private def transformExp[A](depth: DepthA, env: Env, exp: SExpr, transform: Tx[SExpr, A], k: AExpr => Trampoline[A]): Trampoline[A] =
       exp match {
         case atom0: SExprAtomic =>
           val atom = makeRelativeA(depth)(makeAbsoluteA(env, atom0))
-          transform(depth, atom, k)
+          Bounce(() => transform(depth, atom, k))
 
-        case x: SEVal => transform(depth, x, k)
-        case x: SEImportValue => transform(depth, x, k)
+        case x: SEVal => Bounce(() => transform(depth, x, k))
+        case x: SEImportValue => Bounce(() => transform(depth, x, k))
 
         case SEAppGeneral(func, args) => {
-          def helpingTheTypeSystem1(depth: DepthA, func: AbsAtom, txK1: AExpr => A): A = {
-            def helpingTheTypeSystem2(depth: DepthA, args: List[AbsAtom], txK2: AExpr => A): A = {
+          def helpingTheTypeSystem1(depth: DepthA, func: AbsAtom, txK1: AExpr => Trampoline[A]): Trampoline[A] = {
+            def helpingTheTypeSystem2(depth: DepthA, args: List[AbsAtom], txK2: AExpr => Trampoline[A]): Trampoline[A] = {
               val func1 = makeRelativeA(depth)(func)
               val args1 = args.map(makeRelativeA(depth))
-              transform(depth, SEAppAtomic(func1, args1.toArray), txK2)
+              Bounce(() => transform(depth, SEAppAtomic(func1, args1.toArray), txK2))
             }
-            atomizeExps(depth, env, args.toList, helpingTheTypeSystem2, txK1)
+            Bounce(() => atomizeExps(depth, env, args.toList, helpingTheTypeSystem2, txK1))
           }
-          atomizeExp(depth, env, func, helpingTheTypeSystem1, k)
+          Bounce(() => atomizeExp(depth, env, func, helpingTheTypeSystem1, k))
         }
         case SEMakeClo(fvs0, arity, body0) =>
           val fvs = fvs0.map((loc) => makeRelativeL(depth)(makeAbsoluteL(env, loc)))
           val body = flattenToAnf(body0).wrapped
-          transform(depth, SEMakeClo(fvs, arity, body), k)
+          Bounce(() => transform(depth, SEMakeClo(fvs, arity, body), k))
 
         case SECase(scrut, alts0) => {
-          def helpingTheTypeSystem(depth: DepthA, scrut: AbsAtom, txK: AExpr => A): A = {
+          def helpingTheTypeSystem(depth: DepthA, scrut: AbsAtom, txK: AExpr => Trampoline[A]): Trampoline[A] = {
             val scrut1 = makeRelativeA(depth)(scrut)
-            flattenAlts(depth, env, alts0, alts => transform(depth, SECaseAtomic(scrut1, alts), txK))
+            Bounce(() => flattenAlts(depth, env, alts0, alts => transform(depth, SECaseAtomic(scrut1, alts), txK)))
           }
-          atomizeExp(depth, env, scrut, helpingTheTypeSystem, k)
+          Bounce(() => atomizeExp(depth, env, scrut, helpingTheTypeSystem, k))
         }
 
         case SELet(rhss, body) =>
           val expanded = expandMultiLet(rhss.toList, body)
-          transformExp(depth, env, expanded, transform, k)
+          Bounce(() => transformExp(depth, env, expanded, transform, k))
 
         case SELet1General(rhs, body) =>
-          transformLet1(depth, env, rhs, body, transform, k)
+          Bounce(() => transformLet1(depth, env, rhs, body, transform, k))
 
         case SECatch(body0, handler0, fin0) =>
-          val body = flattenExp(depth, env, body0, a => a)
-          val handler = flattenExp(depth, env, handler0, a => a)
-          val fin = flattenExp(depth, env, fin0, a => a)
-          transform(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped), k)
+          val body = flattenExp(depth, env, body0, a => Land(a)).bounce
+          val handler = flattenExp(depth, env, handler0, a => Land(a)).bounce
+          val fin = flattenExp(depth, env, fin0, a => Land(a)).bounce
+          Bounce(() => transform(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped), k))
 
         case SELocation(loc, body) => {
-          def helpingTheTypeSystem(depth:DepthA, body: SExpr, txK: AExpr => A): A =
-            transform(depth, SELocation(loc, body), txK)
-          transformExp(depth, env, body, helpingTheTypeSystem, k)
+          def helpingTheTypeSystem(depth:DepthA, body: SExpr, txK: AExpr => Trampoline[A]): Trampoline[A] =
+            Bounce(() => transform(depth, SELocation(loc, body), txK))
+          Bounce(() => transformExp(depth, env, body, helpingTheTypeSystem, k))
         }
 
         case SELabelClosure(label, exp) => {
-          def helpingTheTypeSystem(depth: DepthA, exp: SExpr, txK: AExpr => A): A =
-            transform(depth, SELabelClosure(label, exp), txK)
-          transformExp(depth, env, exp, helpingTheTypeSystem, k)
+          def helpingTheTypeSystem(depth: DepthA, exp: SExpr, txK: AExpr => Trampoline[A]): Trampoline[A] =
+            Bounce(() => transform(depth, SELabelClosure(label, exp), txK))
+          Bounce(() => transformExp(depth, env, exp, helpingTheTypeSystem, k))
         }
 
         case x: SEAbs => throw CompilationError(s"flatten: unexpected: $x")
@@ -259,28 +259,28 @@ object Anf {
 
     }
 
-  private def atomizeExps[A](depth: DepthA, env: Env, exps: List[SExpr], transform: Tx[List[AbsAtom], A], k: AExpr => A): A =
+  private def atomizeExps[A](depth: DepthA, env: Env, exps: List[SExpr], transform: Tx[List[AbsAtom], A], k: AExpr => Trampoline[A]): Trampoline[A] =
     exps match {
-      case Nil => transform(depth, Nil, k)
+      case Nil => Bounce(() => transform(depth, Nil, k))
       case exp :: exps => {
-        def helpingTheTypeSystem1(depth:DepthA, atom: AbsAtom, txK1: AExpr => A): A = {
-          def helpingTheTypeSystem2(depth: DepthA, atoms: List[AbsAtom], txK2: AExpr => A): A =
-            transform(depth, atom :: atoms, txK2)
-          atomizeExps(depth, env, exps, helpingTheTypeSystem2, txK1)
+        def helpingTheTypeSystem1(depth:DepthA, atom: AbsAtom, txK1: AExpr => Trampoline[A]): Trampoline[A] = {
+          def helpingTheTypeSystem2(depth: DepthA, atoms: List[AbsAtom], txK2: AExpr => Trampoline[A]): Trampoline[A] =
+            Bounce(() => transform(depth, atom :: atoms, txK2))
+          Bounce(() => atomizeExps(depth, env, exps, helpingTheTypeSystem2, txK1))
         }
-        atomizeExp(depth, env, exp, helpingTheTypeSystem1, k)
+        Bounce(() => atomizeExp(depth, env, exp, helpingTheTypeSystem1, k))
       }
     }
 
-  private def atomizeExp[A](depth: DepthA, env: Env, exp: SExpr, transform: Tx[AbsAtom, A], k: AExpr => A): A = {
+  private def atomizeExp[A](depth: DepthA, env: Env, exp: SExpr, transform: Tx[AbsAtom, A], k: AExpr => Trampoline[A]): Trampoline[A] = {
     exp match {
-      case ea: SExprAtomic => transform(depth, makeAbsoluteA(env, ea), k)
+      case ea: SExprAtomic => Bounce(() => transform(depth, makeAbsoluteA(env, ea), k))
       case _ => {
-        def helpingTheTypeSystem(depth: DepthA, anf: SExpr, txK: AExpr => A): A = {
+        def helpingTheTypeSystem(depth: DepthA, anf: SExpr, txK: AExpr => Trampoline[A]): Trampoline[A] = {
           val atom = Right(AbsBinding(depth))
-          transform(depth.incr(1), atom, body => txK(AExpr(SELet1(anf, body.wrapped))))
+          Bounce(() => transform(depth.incr(1), atom, body => Bounce(() => txK(AExpr(SELet1(anf, body.wrapped))))))
         }
-        transformExp(depth, env, exp, helpingTheTypeSystem, k)
+        Bounce(() => transformExp(depth, env, exp, helpingTheTypeSystem, k))
       }
     }
   }
