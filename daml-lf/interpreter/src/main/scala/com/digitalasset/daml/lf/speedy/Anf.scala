@@ -38,7 +38,7 @@ object Anf {
   def flattenToAnf(exp: SExpr): AExpr = {
     val depth = DepthA(0)
     val env = initEnv
-    flattenExp(depth, env, exp, flattenedExpression => Land(flattenedExpression)).bounce
+    flattenExp(depth, env, exp, flattenedExpression => flattenedExpression)
   }
 
   /**
@@ -89,7 +89,7 @@ object Anf {
   final case class Bounce[T](continue: () => Trampoline[T]) extends Trampoline[T]
 
   /** `Res` is the final, fully transformed ANF expression, returned by the continuations. */
-  type Res = Trampoline[AExpr]
+  type Res = AExpr
 
   /** `K[T]` is the continuation type which must be passed to the core transformation
     functions, i,e, `transformExp`.
@@ -154,8 +154,8 @@ object Anf {
       depth: DepthA,
       env: Env,
       exp: SExpr,
-      k: (AExpr => Trampoline[AExpr])): Res = {
-    Bounce(() => k(transformExp(depth, env, exp, { case (_, sexpr) => Land(AExpr(sexpr)) }).bounce))
+      k: (AExpr => AExpr)): Res = {
+    k(transformExp(depth, env, exp, { case (_, sexpr) => AExpr(sexpr) }))
   }
 
   private def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
@@ -178,8 +178,8 @@ object Anf {
         val n = patternNArgs(pat)
         val env1 = trackBindings(depth, env, n)
         SCaseAlt(pat, flattenExp(depth.incr(n), env1, body0, body => {
-          Land(body)
-        }).bounce.wrapped)
+          body
+        }).wrapped)
     }
   }
 
@@ -197,7 +197,6 @@ object Anf {
     See: `atomizeExp` for a instance where this wrapping occurs.
     */
   private def transformExp(depth: DepthA, env: Env, exp: SExpr, k: K[SExpr]): Res =
-    Bounce(() =>
       exp match {
         case atom0: SExprAtomic =>
           val atom = makeRelativeA(depth)(makeAbsoluteA(env, atom0))
@@ -279,20 +278,19 @@ object Anf {
         case x: SELet1Builtin => throw CompilationError(s"flatten: unexpected: $x")
         case x: SECaseAtomic => throw CompilationError(s"flatten: unexpected: $x")
 
-    })
+    }
 
   private def atomizeExps(depth: DepthA, env: Env, exps: List[SExpr], k: K[List[AbsAtom]]): Res =
     exps match {
       case Nil => k(depth, Nil)
       case exp :: exps =>
-        Bounce(() =>
           atomizeExp(depth, env, exp, {
             case (depth, atom) =>
               atomizeExps(depth, env, exps, {
                 case (depth, atoms) =>
-                  Bounce(() => k(depth, atom :: atoms))
+                  k(depth, atom :: atoms)
               })
-          }))
+          })
     }
 
   private def atomizeExp(depth: DepthA, env: Env, exp: SExpr, k: K[AbsAtom]): Res = {
@@ -306,9 +304,9 @@ object Anf {
             case (depth, anf) =>
               val atom = Right(AbsBinding(depth))
               // Here we call `k' with a newly introduced variable:
-              val body = k(depth.incr(1), atom).bounce.wrapped
+              val body = k(depth.incr(1), atom).wrapped
               // Here we wrap the result of `k` with an enclosing let expression:
-              Land(AExpr(SELet1(anf, body)))
+              AExpr(SELet1(anf, body))
           }
         )
     }

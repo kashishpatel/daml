@@ -124,6 +124,7 @@ da_scala_binary(
     deps = [
         ":sandbox",
     ],
+    jvm_flags=["-Xss256m"],
 )
 
 da_scala_binary(
