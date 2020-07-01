@@ -164,9 +164,9 @@ object Anf {
       case SCaseAlt(pat, body0) =>
         val n = patternNArgs(pat)
         val env1 = trackBindings(depth, env, n)
-        SCaseAlt(pat, flattenExp(depth.incr(n), env1, body0, body => {
-          body
-        }).wrapped)
+        flattenExp(depth.incr(n), env1, body0, body => {
+          SCaseAlt(pat, body.wrapped)
+        })
     })
   }
 
@@ -213,8 +213,7 @@ object Anf {
           k(atomizeExp(depth, env, scrut, {
             case (depth, scrut) =>
               val scrut1 = makeRelativeA(depth)(scrut)
-              val alts = flattenAlts(depth, env, alts0, a => a)
-              transform(depth, SECaseAtomic(scrut1, alts))
+              flattenAlts(depth, env, alts0, alts => transform(depth, SECaseAtomic(scrut1, alts)))
           }, a => a))
 
         case SELet(rhss, body) =>
