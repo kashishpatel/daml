@@ -231,14 +231,10 @@ object Anf {
           transformLet1(depth, env, rhs, body, transform, k)
 
         case SECatch(body0, handler0, fin0) =>
-          flattenExp(depth, env, body0, body => {
-              flattenExp(depth, env, handler0, handler => {
-                flattenExp(depth, env, fin0, fin => {
-                  transform(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped), k)
-                })
-              })
-            }
-          )
+          val body = flattenExp(depth, env, body0, a => a)
+          val handler = flattenExp(depth, env, handler0, a => a)
+          val fin = flattenExp(depth, env, fin0, a => a)
+          transform(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped), k)
 
         case SELocation(loc, body) => {
           def helpingTheTypeSystem(depth:DepthA, body: SExpr, txK: AExpr => A): A =
