@@ -159,10 +159,7 @@ object Anf {
   }
 
   private def transformLet1(depth: DepthA, env: Env, rhs: SExpr, body: SExpr, k: K[SExpr]): Res = {
-    flattenExp(
-      depth,
-      env,
-      rhs, { rhs1 =>
+    flattenExp(depth, env, rhs, { rhs1 =>
         val depth1 = depth.incr(1)
         val env1 = trackBindings(depth, env, 1)
         flattenExp(depth1, env1, body, { body1 =>
@@ -206,15 +203,9 @@ object Anf {
         case x: SEImportValue => k(depth, x)
 
         case SEAppGeneral(func, args) =>
-          atomizeExp(
-            depth,
-            env,
-            func, {
+          atomizeExp(depth, env, func, {
               case (depth, func) =>
-                atomizeExps(
-                  depth,
-                  env,
-                  args.toList, {
+                atomizeExps(depth, env, args.toList, {
                     case (depth, args) =>
                       val func1 = makeRelativeA(depth)(func)
                       val args1 = args.map(makeRelativeA(depth))
@@ -244,11 +235,7 @@ object Anf {
           transformLet1(depth, env, rhs, body, k)
 
         case SECatch(body0, handler0, fin0) =>
-          flattenExp(
-            depth,
-            env,
-            body0,
-            body => {
+          flattenExp(depth, env, body0, body => {
               flattenExp(depth, env, handler0, handler => {
                 flattenExp(depth, env, fin0, fin => {
                   k(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped))
@@ -297,10 +284,7 @@ object Anf {
     exp match {
       case ea: SExprAtomic => k(depth, makeAbsoluteA(env, ea))
       case _ =>
-        transformExp(
-          depth,
-          env,
-          exp, {
+        transformExp(depth, env, exp, {
             case (depth, anf) =>
               val atom = Right(AbsBinding(depth))
               // Here we call `k' with a newly introduced variable:
