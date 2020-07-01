@@ -152,13 +152,11 @@ object Anf {
   }
 
   private def transformLet1[A](depth: DepthA, env: Env, rhs: SExpr, body: SExpr, transform: Tx[SExpr], k: AExpr => A): A = {
-    k(transformExp(depth, env, rhs, { case (depth, rhs) =>
+    transformExp(depth, env, rhs, { case (depth, rhs) =>
       val depth1 = depth.incr(1)
       val env1 = trackBindings(depth, env, 1)
-      val body1 = transformExp(depth1, env1, body, transform, a => a)
-      AExpr(SELet1(rhs, body1.wrapped)
-      )
-    }, a => a))
+      transformExp(depth1, env1, body, transform, body1 => AExpr(SELet1(rhs, body1.wrapped)))
+    }, k)
   }
 
   private def flattenAlts(depth: DepthA, env: Env, alts: Array[SCaseAlt]): Array[SCaseAlt] = {
