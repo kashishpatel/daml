@@ -291,12 +291,11 @@ object Anf {
         case SELet1General(rhs, body) =>
           Bounce(() => transformLet1(depth, env, rhs, body, transform, k))
 
-          //TODO
         case SECatch(body0, handler0, fin0) =>
-          val body = flattenExp(depth, env, body0, a => Land(a)).bounce
-          val handler = flattenExp(depth, env, handler0, a => Land(a)).bounce
-          val fin = flattenExp(depth, env, fin0, a => Land(a)).bounce
-          Bounce(() => transform(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped), k))
+          Bounce(() => flattenExp(depth, env, body0, body =>
+            Bounce(() => flattenExp(depth, env, handler0, handler =>
+              Bounce(() => flattenExp(depth, env, fin0, fin =>
+                Bounce(() => transform(depth, SECatch(body.wrapped, handler.wrapped, fin.wrapped), k))))))))
 
         case SELocation(loc, body) => {
           def tx(depth:DepthA, body: SExpr, txK: K[AExpr, A]): Trampoline[A] =
