@@ -6,7 +6,9 @@ package com.daml.metrics
 import com.codahale.metrics.MetricRegistry.MetricSupplier
 import com.codahale.metrics._
 
-class Metrics(val registry: MetricRegistry) {
+// IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+// IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
+final class Metrics(val registry: MetricRegistry) {
 
   private def gauge[T](name: MetricName, metricSupplier: MetricSupplier[Gauge[_]]): Gauge[T] = {
     registry.remove(name)
@@ -19,6 +21,8 @@ class Metrics(val registry: MetricRegistry) {
     val db: DatabaseMetrics = new DatabaseMetrics(registry, Prefix, "db")
   }
 
+  // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+  // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
   object daml {
     private val Prefix: MetricName = MetricName.DAML
 
@@ -38,6 +42,8 @@ class Metrics(val registry: MetricRegistry) {
         registry.meter(Prefix :+ "valid_submissions")
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object execution {
       private val Prefix: MetricName = daml.Prefix :+ "execution"
 
@@ -56,9 +62,13 @@ class Metrics(val registry: MetricRegistry) {
       val total: Timer = registry.timer(Prefix :+ "total")
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object kvutils {
       private val Prefix: MetricName = daml.Prefix :+ "kvutils"
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object committer {
         private val Prefix: MetricName = kvutils.Prefix :+ "committer"
 
@@ -76,6 +86,8 @@ class Metrics(val registry: MetricRegistry) {
         def stepTimer(committerName: String, stepName: String): Timer =
           registry.timer(Prefix :+ committerName :+ "step_timers" :+ stepName)
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object last {
           private val Prefix: MetricName = committer.Prefix :+ "last"
 
@@ -92,6 +104,8 @@ class Metrics(val registry: MetricRegistry) {
           registry.register(Prefix :+ "exception", lastExceptionGauge)
         }
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object config {
           private val Prefix: MetricName = committer.Prefix :+ "config"
 
@@ -99,6 +113,8 @@ class Metrics(val registry: MetricRegistry) {
           val rejections: Counter = registry.counter(Prefix :+ "rejections")
         }
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object packageUpload {
           private val Prefix: MetricName = committer.Prefix :+ "package_upload"
 
@@ -111,6 +127,8 @@ class Metrics(val registry: MetricRegistry) {
           }
         }
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object partyAllocation {
           private val Prefix: MetricName = committer.Prefix :+ "party_allocation"
 
@@ -118,6 +136,8 @@ class Metrics(val registry: MetricRegistry) {
           val rejections: Counter = registry.counter(Prefix :+ "rejections")
         }
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object transaction {
           private val Prefix: MetricName = committer.Prefix :+ "transaction"
 
@@ -140,6 +160,8 @@ class Metrics(val registry: MetricRegistry) {
       object submission {
         private val Prefix: MetricName = kvutils.Prefix :+ "submission"
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object conversion {
           private val Prefix: MetricName = submission.Prefix :+ "conversion"
 
@@ -155,6 +177,8 @@ class Metrics(val registry: MetricRegistry) {
             registry.timer(Prefix :+ "configuration_to_submission")
         }
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object validator {
           private val Prefix: MetricName = submission.Prefix :+ "validator"
 
@@ -190,12 +214,16 @@ class Metrics(val registry: MetricRegistry) {
         }
       }
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object writer {
         private val Prefix: MetricName = kvutils.Prefix :+ "writer"
 
         val commit: Timer = registry.timer(Prefix :+ "commit")
       }
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object conflictdetection {
         private val Prefix = kvutils.Prefix :+ "conflict_detection"
 
@@ -216,18 +244,26 @@ class Metrics(val registry: MetricRegistry) {
       }
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object lapi {
       private val Prefix: MetricName = daml.Prefix :+ "lapi"
 
       def forMethod(name: String): Timer = registry.timer(Prefix :+ name)
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object ledger {
       private val Prefix: MetricName = daml.Prefix :+ "ledger"
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object database {
         private val Prefix: MetricName = ledger.Prefix :+ "database"
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object queries {
           private val Prefix: MetricName = database.Prefix :+ "queries"
 
@@ -242,6 +278,8 @@ class Metrics(val registry: MetricRegistry) {
           val truncate: Timer = registry.timer(Prefix :+ "truncate")
         }
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object transactions {
           private val Prefix: MetricName = database.Prefix :+ "transactions"
 
@@ -252,6 +290,8 @@ class Metrics(val registry: MetricRegistry) {
         }
       }
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object log {
         private val Prefix: MetricName = ledger.Prefix :+ "log"
 
@@ -259,6 +299,8 @@ class Metrics(val registry: MetricRegistry) {
         val read: Timer = registry.timer(Prefix :+ "read")
       }
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object state {
         private val Prefix: MetricName = ledger.Prefix :+ "state"
 
@@ -267,6 +309,8 @@ class Metrics(val registry: MetricRegistry) {
       }
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object index {
       private val Prefix = daml.Prefix :+ "index"
 
@@ -399,6 +443,8 @@ class Metrics(val registry: MetricRegistry) {
         val getAcsEventSeqIdRange: DatabaseMetrics =
           createDbMetrics("get_acs_event_sequential_id_range")
 
+        // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+        // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
         object translation {
           private val Prefix: MetricName = db.Prefix :+ "translation"
           val cache = new CacheMetrics(registry, Prefix :+ "cache")
@@ -406,6 +452,8 @@ class Metrics(val registry: MetricRegistry) {
       }
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object indexer {
       private val Prefix: MetricName = daml.Prefix :+ "indexer"
 
@@ -421,10 +469,14 @@ class Metrics(val registry: MetricRegistry) {
       val stateUpdateProcessing: Timer = registry.timer(Prefix :+ "processed_state_updates")
     }
 
+    // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+    // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
     object services {
       private val Prefix: MetricName = daml.Prefix :+ "services"
 
-      object indexService {
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
+      object index {
         private val Prefix: MetricName = services.Prefix :+ "index"
 
         val listLfPackages: Timer = registry.timer(Prefix :+ "list_lf_packages")
@@ -453,6 +505,8 @@ class Metrics(val registry: MetricRegistry) {
         val stopDeduplicateCommand: Timer = registry.timer(Prefix :+ "stop_deduplicating_command")
       }
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object read {
         private val Prefix: MetricName = services.Prefix :+ "read"
 
@@ -461,6 +515,8 @@ class Metrics(val registry: MetricRegistry) {
         val stateUpdates: Timer = registry.timer(Prefix :+ "state_updates")
       }
 
+      // IMPORTANT NOTICE: the contents of this file must be kept in sync with the documentation
+      // IMPORTANT NOTICE: the documentation for the metrics is kept in //docs/source/tools/sandbox.rst
       object write {
         private val Prefix: MetricName = services.Prefix :+ "write"
 
