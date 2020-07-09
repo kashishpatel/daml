@@ -81,7 +81,7 @@ class KVUtilsTransactionSpec extends WordSpec with Matchers {
     val p0 = mkParticipantId(0)
     val p1 = mkParticipantId(1)
 
-    "be able to submit transaction" in KVTest.runTestWithSimplePackage(alice, bob, eve) {
+    "be able to submit a transaction" in KVTest.runTestWithSimplePackage(alice, bob, eve) {
       val seed = hash(this.getClass.getName)
       for {
         transaction <- runSimpleCommand(alice, seed, simpleCreateCmd)
@@ -91,6 +91,19 @@ class KVUtilsTransactionSpec extends WordSpec with Matchers {
           submissionSeed = seed).map(_._2)
       } yield {
         logEntry.getPayloadCase shouldEqual DamlLogEntry.PayloadCase.TRANSACTION_ENTRY
+      }
+    }
+
+    "be able to pre-execute a transaction" in KVTest.runTestWithSimplePackage(alice, bob, eve) {
+      val seed = hash(this.getClass.getName)
+      for {
+        transaction <- runSimpleCommand(alice, seed, simpleCreateCmd)
+        preExecutionResult <- preExecuteTransaction(
+          submitter = alice,
+          transaction = transaction,
+          submissionSeed = seed).map(_._2)
+      } yield {
+        preExecutionResult.successfulLogEntry.getPayloadCase shouldEqual DamlLogEntry.PayloadCase.TRANSACTION_ENTRY
       }
     }
 

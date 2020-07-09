@@ -13,8 +13,10 @@ import com.daml.lf.crypto
 import com.daml.lf.data.Time.Timestamp
 import com.daml.lf.data.{ImmArray, Ref}
 import com.daml.lf.engine.Engine
-import com.daml.lf.transaction.{Transaction => Tx}
+import com.daml.lf.transaction.Transaction
 import com.daml.daml_lf_dev.DamlLf
+import com.daml.ledger.participant.state.kvutils.KeyValueCommitting.PreExecutionResult
+import com.daml.lf.crypto.Hash
 import com.daml.metrics.Metrics
 import scalaz.State
 import scalaz.std.list._
@@ -145,6 +147,38 @@ object KVTest {
       entryId -> logEntry
     }
 
+  private def preExecute(
+      damlSubmission: DamlSubmission): KVTest[(DamlLogEntryId, PreExecutionResult)] =
+    for {
+      testState <- get[KVTestState]
+      entryId <- freshEntryId
+      preExecutionResult @ PreExecutionResult(_, successfulLogEntry, newState, _, _, _, _) = keyValueCommitting
+        .preExecuteSubmission(
+          defaultConfig = testState.defaultConfig,
+          submission = damlSubmission,
+          participantId = testState.participantId,
+          inputState = damlSubmission.getInputDamlStateList.asScala.map { key =>
+            {
+              val damlStateValue = testState.damlState
+                .get(key)
+              key -> (damlStateValue -> damlStateValue
+                .map(_.toByteString)
+                .getOrElse(FingerprintPlaceholder))
+            }
+          }.toMap,
+        )
+      _ <- addDamlState(newState)
+    } yield {
+      // Verify that we can always process the log entry
+      val _ =
+        KeyValueConsumption.logEntryToUpdate(
+          entryId,
+          successfulLogEntry,
+          recordTimeFromTimeUpdateLogEntry)
+
+      entryId -> preExecutionResult
+    }
+
   def submitArchives(
       submissionId: String,
       archives: DamlLf.Archive*
@@ -165,7 +199,7 @@ object KVTest {
       submissionSeed: crypto.Hash,
       additionalContractDataTy: String,
       cmds: Command*,
-  ): KVTest[(SubmittedTransaction, Tx.Metadata)] =
+  ): KVTest[(SubmittedTransaction, Transaction.Metadata)] =
     for {
       s <- get[KVTestState]
       (tx, meta) = engine
@@ -199,41 +233,74 @@ object KVTest {
       submitter: Party,
       submissionSeed: crypto.Hash,
       cmds: Command*,
-  ): KVTest[(SubmittedTransaction, Tx.Metadata)] =
+  ): KVTest[(SubmittedTransaction, Transaction.Metadata)] =
     runCommand(submitter, submissionSeed, defaultAdditionalContractDataTy, cmds: _*)
 
   def submitTransaction(
       submitter: Party,
-      transaction: (SubmittedTransaction, Tx.Metadata),
+      transaction: (SubmittedTransaction, Transaction.Metadata),
       submissionSeed: crypto.Hash,
       letDelta: Duration = Duration.ZERO,
       commandId: CommandId = randomLedgerString,
       deduplicationTime: Duration = Duration.ofDays(1)): KVTest[(DamlLogEntryId, DamlLogEntry)] =
     for {
       testState <- get[KVTestState]
-      submInfo = SubmitterInfo(
-        submitter = submitter,
-        applicationId = Ref.LedgerString.assertFromString("test"),
-        commandId = commandId,
-        deduplicateUntil =
-          testState.recordTime.addMicros(deduplicationTime.toNanos / 1000).toInstant,
-      )
+      submInfo = createSubmitterInfo(submitter, commandId, deduplicationTime, testState)
       (tx, txMetaData) = transaction
-      subm = keyValueSubmission.transactionToSubmission(
-        submitterInfo = submInfo,
-        meta = TransactionMeta(
-          ledgerEffectiveTime = testState.recordTime.addMicros(letDelta.toNanos / 1000),
-          workflowId = None,
-          submissionTime = txMetaData.submissionTime,
-          submissionSeed = submissionSeed,
-          optUsedPackages = Some(txMetaData.usedPackages),
-          optNodeSeeds = None,
-          optByKeyNodes = None,
-        ),
-        tx = tx
-      )
+      subm = transactionToSubmission(submissionSeed, letDelta, testState, submInfo, tx, txMetaData)
       result <- submit(subm)
     } yield result
+
+  def preExecuteTransaction(
+      submitter: Party,
+      transaction: (SubmittedTransaction, Transaction.Metadata),
+      submissionSeed: crypto.Hash,
+      letDelta: Duration = Duration.ZERO,
+      commandId: CommandId = randomLedgerString,
+      deduplicationTime: Duration = Duration.ofDays(1))
+    : KVTest[(DamlLogEntryId, PreExecutionResult)] =
+    for {
+      testState <- get[KVTestState]
+      submInfo = createSubmitterInfo(submitter, commandId, deduplicationTime, testState)
+      (tx, txMetaData) = transaction
+      subm = transactionToSubmission(submissionSeed, letDelta, testState, submInfo, tx, txMetaData)
+      result <- preExecute(subm)
+    } yield result
+
+  private def createSubmitterInfo(
+      submitter: Party,
+      commandId: CommandId,
+      deduplicationTime: Duration,
+      testState: KVTestState): SubmitterInfo = {
+    SubmitterInfo(
+      submitter = submitter,
+      applicationId = Ref.LedgerString.assertFromString("test"),
+      commandId = commandId,
+      deduplicateUntil = testState.recordTime.addMicros(deduplicationTime.toNanos / 1000).toInstant,
+    )
+  }
+
+  private def transactionToSubmission(
+      submissionSeed: Hash,
+      letDelta: Duration,
+      testState: KVTestState,
+      submInfo: SubmitterInfo,
+      tx: SubmittedTransaction,
+      txMetaData: Transaction.Metadata): DamlSubmission = {
+    keyValueSubmission.transactionToSubmission(
+      submitterInfo = submInfo,
+      meta = TransactionMeta(
+        ledgerEffectiveTime = testState.recordTime.addMicros(letDelta.toNanos / 1000),
+        workflowId = None,
+        submissionTime = txMetaData.submissionTime,
+        submissionSeed = submissionSeed,
+        optUsedPackages = Some(txMetaData.usedPackages),
+        optNodeSeeds = None,
+        optByKeyNodes = None,
+      ),
+      tx = tx
+    )
+  }
 
   val minMRTDelta: Duration = Duration.ofSeconds(1)
 
@@ -275,5 +342,7 @@ object KVTest {
         Ref.Party.assertFromString(logEntry.getPartyAllocationEntry.getParty)
       }
     } yield result
+
+  private[this] def recordTimeFromTimeUpdateLogEntry = Some(Timestamp.now())
 
 }
