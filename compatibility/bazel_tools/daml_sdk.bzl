@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@os_info//:os_info.bzl", "is_windows", "os_name")
+load("@daml//bazel_tools/dev_env_tool:dev_env_tool.bzl", "dadew_where", "dadew_tool_home")
 
 runfiles_library = """
 # Copy-pasted from the Bazel Bash runfiles library v2.
@@ -109,6 +110,12 @@ $JAVA_HOME/bin/java -jar $(rlocation daml-sdk-{version}/ledger-api-test-tool.jar
     # By writing all checksums to a file and only depending on that we get
     # only one extra runfile while still making sure that things are properly
     # invalidated.
+    if is_windows:
+        ps = ctx.which("powershell")
+        dadew = dadew_where(ctx, ps)
+        find = dadew_tool_home(dadew, "msys2") + "\\usr\\bin\\find.exe"
+    else:
+        find = "find"
     exec_result = ctx.execute(
         ["find", "sdk/sdk/{version}/".format(version = ctx.attr.version), "-type", "f", "-exec", "md5sum", "{}", ";"],
     )
