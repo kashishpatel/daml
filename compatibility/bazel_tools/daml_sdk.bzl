@@ -15,6 +15,11 @@ source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
 # --- end runfiles.bash initialization v2 ---
 """
 
+# Split a line separated by spaces and return the second.
+# This is useful for the result of md5sum.
+def sort_line(line):
+    return line.split("  ")[1]
+
 def _daml_sdk_impl(ctx):
     # The DAML assistant will mark the installed SDK read-only.
     # This breaks Bazel horribly on Windows to the point where
@@ -98,6 +103,24 @@ update-check: never
 $JAVA_HOME/bin/java -jar $(rlocation daml-sdk-{version}/ledger-api-test-tool.jar) $@
 """.format(version = ctx.attr.version, runfiles_library = runfiles_library),
     )
+
+    # Depending on all files as runfiles results in thousands of symlinks
+    # which eventually results in us running out of inodes on CI.
+    # By writing all checksums to a file and only depending on that we get
+    # only one extra runfile while still making sure that things are properly
+    # invalidated.
+    exec_result = ctx.execute(
+        ["find", "sdk/sdk/{version}/".format(version = ctx.attr.version), "-type", "f", "-exec", "md5sum", "{}", ";"],
+    )
+    if exec_result.return_code:
+        fail("Error executing find: {stderr}".format(stderr = exec_result.stderr))
+    ctx.file(
+        "sdk/sdk/{version}/checksums".format(version = ctx.attr.version),
+        # We don’t really care about the order here but find is non-deterministic
+        # and having something fixed is clearly better for caching.
+        content = "\n".join(sorted(exec_result.stdout.splitlines(), key = sort_line)),
+    )
+
     ctx.file(
         "daml.sh",
         content =
@@ -128,7 +151,7 @@ sh_binary(
 cc_binary(
   name = "daml",
   srcs = ["daml.cc"],
-  data = [":sdk/bin/daml"] + glob(["sdk/sdk/{version}/**"]),
+  data = [":sdk/bin/daml", ":sdk/sdk/{version}/checksums"],
   deps = ["@bazel_tools//tools/cpp/runfiles:runfiles"],
 )
 # Needed to provide the same set of DARs to the ledger that
