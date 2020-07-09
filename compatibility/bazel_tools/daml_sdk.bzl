@@ -110,14 +110,15 @@ $JAVA_HOME/bin/java -jar $(rlocation daml-sdk-{version}/ledger-api-test-tool.jar
     # By writing all checksums to a file and only depending on that we get
     # only one extra runfile while still making sure that things are properly
     # invalidated.
+    find = "find"
+    md5sum = "md5sum"
     if is_windows:
         ps = ctx.which("powershell")
         dadew = dadew_where(ctx, ps)
-        find = dadew_tool_home(dadew, "msys2") + "\\usr\\bin\\find.exe"
-    else:
-        find = "find"
+        find = dadew_tool_home(dadew, "msys2") + "\\usr\\bin\\md5sum.exe"
+
     exec_result = ctx.execute(
-        ["find", "sdk/sdk/{version}/".format(version = ctx.attr.version), "-type", "f", "-exec", "md5sum", "{}", ";"],
+        [find, "sdk/sdk/{version}/".format(version = ctx.attr.version), "-type", "f", "-exec", md5sum, "{}", ";"],
     )
     if exec_result.return_code:
         fail("Error executing find: {stderr}".format(stderr = exec_result.stderr))
